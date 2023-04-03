@@ -75,28 +75,7 @@ def basic_als_recommender(filename, seed):
     - coldStartStrategy: 'drop'
     Test file: tests/test_basic_als.py
     '''
-    spark = init_spark()
-    lines = spark.read.text(filename).rdd
-    parts = lines.map(lambda row: row.value.split("::"))
-    ratingsRDD = parts.map(lambda p: Row(userId=int(p[0]), movieId=int(p[1]),
-                                         rating=float(p[2]), timestamp=int(p[3])))
-    ratings = spark.createDataFrame(ratingsRDD)
-
-    (training, test) = ratings.randomSplit([0.8, 0.2],seed)
-
-    als = ALS(maxIter=5, rank=70, regParam=0.01, userCol="userId", itemCol="movieId", ratingCol="rating",
-              coldStartStrategy="drop")
-    als.setSeed(seed)
-
-    model = als.fit(training)
-
-    # Evaluate the model by computing the RMSE on the test data
-    predictions = model.transform(test)
-    evaluator = RegressionEvaluator(metricName="rmse", labelCol="rating",
-                                    predictionCol="prediction")
-    rmse_value = evaluator.evaluate(predictions)
-    return rmse_value
-    
+    return 0
 
 def global_average(filename, seed):
     '''
@@ -105,17 +84,7 @@ def global_average(filename, seed):
     sets should be determined as before (e.g: as in function basic_als_recommender).
     Test file: tests/test_global_average.py
     '''
-    spark = init_spark()
-    lines = spark.read.text(filename).rdd
-    parts = lines.map(lambda row: row.value.split("::"))
-    ratingsRDD = parts.map(lambda p: Row(userId=int(p[0]), movieId=int(p[1]),
-                                         rating=float(p[2]), timestamp=int(p[3])))
-    ratings = spark.createDataFrame(ratingsRDD)
-
-    (train, test) = ratings.randomSplit([0.8, 0.2], seed)
-
-    return train.agg({"rating": "avg"}).collect()[0][0]
-    
+    return 0
 
 def global_average_recommender(filename, seed):
     '''
@@ -126,24 +95,7 @@ def global_average_recommender(filename, seed):
     sets should be determined as before. You can add a column to an existing DataFrame with function *.withColumn(...)*.
     Test file: tests/test_global_average_recommender.py
     '''
-
-    spark = init_spark()
-    lines = spark.read.text(filename).rdd
-    parts = lines.map(lambda row: row.value.split("::"))
-    ratingsRDD = parts.map(lambda p: Row(userId=int(p[0]), movieId=int(p[1]),
-                                         rating=float(p[2]), timestamp=int(p[3])))
-    ratings = spark.createDataFrame(ratingsRDD)
-
-    (training, test) = ratings.randomSplit([0.8, 0.2], seed)
-
-    global_average_value = training.agg({"rating": "avg"}).collect()[0][0]
-    test = test.withColumn("global_average", lit(global_average_value))
-
-    evaluator = RegressionEvaluator(metricName="rmse", labelCol="rating",
-                                    predictionCol="global_average")
-    rmse_value = evaluator.evaluate(test)
-    return rmse_value
-
+    return 0
 
 def means_and_interaction(filename, seed, n):
     '''
@@ -169,27 +121,7 @@ def means_and_interaction(filename, seed, n):
     Note, this function should return a list of collected Rows. Please, have a
     look at the test file to ensure you have the right format.
     '''
-    spark = init_spark()
-    lines = spark.read.text(filename).rdd
-    parts = lines.map(lambda row: row.value.split("::"))
-    ratingsRDD = parts.map(lambda p: Row(userId=int(p[0]), movieId=int(p[1]),
-                                         rating=float(p[2]), timestamp=int(p[3])))
-    ratings = spark.createDataFrame(ratingsRDD)
-
-    (train, test) = ratings.randomSplit([0.8, 0.2], seed)
-
-    global_average_value = train.agg({"rating": "avg"}).collect()[0][0]
-    user_mean = train.groupBy("userId").agg({"rating": "avg"})
-    item_mean = train.groupBy("movieId").agg({"rating": "avg"})
-
-    train = train.join(item_mean,"movieId").withColumnRenamed("avg(rating)", "item_mean")
-    train = train.join(user_mean,"userId").withColumnRenamed("avg(rating)", "user_mean")
-    train = train.withColumn("user_item_interaction", train.rating - (train.user_mean + train.item_mean - global_average_value))
-
-    train = train.drop("timestamp")
-    x = train.sort("userId", "movieId").take(n)
-    return x
-    
+    return []
 
 def als_with_bias_recommender(filename, seed):
     '''
@@ -203,37 +135,4 @@ def als_with_bias_recommender(filename, seed):
     as before and be initialized with the random seed passed as 
     parameter. Test file: tests/test_als_with_bias_recommender.py
     '''
-
-    spark = init_spark()
-    lines = spark.read.text(filename).rdd
-    parts = lines.map(lambda row: row.value.split("::"))
-    ratingsRDD = parts.map(lambda p: Row(userId=int(p[0]), movieId=int(p[1]),
-                                         rating=float(p[2]), timestamp=int(p[3])))
-    ratings = spark.createDataFrame(ratingsRDD)
-
-    (train, test) = ratings.randomSplit([0.8, 0.2], seed)
-
-    global_average_value = train.agg({"rating": "avg"}).collect()[0][0]
-    user_mean = train.groupBy("userId").agg({"rating": "avg"})
-    item_mean = train.groupBy("movieId").agg({"rating": "avg"})
-
-    train = train.join(item_mean, "movieId").withColumnRenamed("avg(rating)", "item_mean")
-    train = train.join(user_mean, "userId").withColumnRenamed("avg(rating)", "user_mean")
-    train = train.withColumn("user_item_interaction",
-                                   train.rating - (train.user_mean + train.item_mean - global_average_value))
-
-    als = ALS(maxIter=5, rank=70, regParam=0.01, userCol="userId", itemCol="movieId", ratingCol="user_item_interaction",
-              coldStartStrategy="drop")
-    als.setSeed(seed)
-    model = als.fit(train)
-
-    predictions = model.transform(test)
-
-    predictions = predictions.join(user_mean,"userId").withColumnRenamed("avg(rating)", "user_mean")
-    predictions = predictions.join(item_mean,"movieId").withColumnRenamed("avg(rating)", "item_mean")
-    predictions = predictions.withColumn("recomputed_prediction", predictions.prediction + predictions.user_mean + predictions.item_mean - global_average_value)
-
-    evaluator = RegressionEvaluator(metricName="rmse", labelCol="rating",
-                                    predictionCol="recomputed_prediction")
-    rmse_value = evaluator.evaluate(predictions)
-    return rmse_value
+    return 0
